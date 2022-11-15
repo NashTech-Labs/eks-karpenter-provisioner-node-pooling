@@ -1,0 +1,95 @@
+######################################## label: custom ########################################
+apiVersion: karpenter.sh/v1alpha5
+kind: Provisioner
+metadata:
+  name: custom
+spec:
+  ttlSecondsUntilExpired: 2592000
+  ttlSecondsAfterEmpty: 1800
+  taints:
+    - key: node-pool
+      value: custom
+      effect: NoSchedule
+  labels:
+    owner: ankur-knoldus-devops
+    node-pool: custom
+  requirements:
+    - key: node.kubernetes.io/instance-type
+      operator: In
+      values: ["t3.small", "t3.medium", "t3.large", "t3.xlarge", "t3.2xlarge"]
+    - key: topology.kubernetes.io/zone
+      operator: In
+      values: ["us-east-1a", "us-east-1b", "us-east-1c"]
+    - key: kubernetes.io/arch
+      operator: In
+      values: ["amd64"]
+    - key: karpenter.sh/capacity-type # If not included, the webhook for the AWS cloud provider will default to on-demand
+      operator: In
+      values: ["spot", "on-demand"]
+  provider:
+    subnetSelector:
+      karpenter.sh/discovery: eks-cluster
+    securityGroupSelector:
+      karpenter.sh/discovery: eks-cluster
+    amiFamily: Bottlerocket
+    tags:
+      cost-profile: eks-cluster
+  limits:
+    resources:
+      cpu: 1000
+      memory: 1000Gi
+---
+# if a Pod has the label "node-pool=custom"
+# then it will receive a nodeSelector for "node-pool=custom"
+apiVersion: mutations.gatekeeper.sh/v1beta1
+kind: Assign
+metadata:
+  name: nodepool-selector-custom
+  namespace: gatekeeper-system
+spec:
+  applyTo:
+    - groups: [""]
+      kinds: ["Pod"]
+      versions: ["v1"]
+  match:
+    scope: Namespaced
+    kinds:
+      - apiGroups: ["*"]
+        kinds: ["Pod"]
+    labelSelector:
+      matchLabels:
+        node-pool: custom
+  location: "spec.nodeSelector"
+  parameters:
+    assign:
+      value:
+        node-pool: "custom"
+---
+# if a Pod has the label "node-pool=custom"
+# then it will receive a toleration for "node-pool=custom"
+apiVersion: mutations.gatekeeper.sh/v1beta1
+kind: Assign
+metadata:
+  name: nodepool-toleration-custom
+  namespace: gatekeeper-system
+spec:
+  applyTo:
+    - groups: [""]
+      kinds: ["Pod"]
+      versions: ["v1"]
+  match:
+    scope: Namespaced
+    kinds:
+    - apiGroups: ["*"]
+      kinds: ["Pod"]
+    labelSelector:
+      matchLabels:
+        node-pool: custom
+  location: "spec.tolerations"
+  parameters:
+    assign:
+      value:
+        - key: "node-pool"
+          operator: "Equal"
+          value: "custom"
+---
